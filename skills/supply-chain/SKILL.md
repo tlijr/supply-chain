@@ -11,12 +11,20 @@ The output enables an analyst to understand: Who are the critical suppliers? Whe
 
 The final deliverable is a **single self-contained HTML file** with:
 - Embedded CSS and JavaScript (no external dependencies)
-- Interactive supply chain network with clickable nodes
-- Company detail cards with financials, business description, and product information
-- Navigation between supply chain layers (Tier 1, Tier 2, etc.)
+- **Tier-grouped Canvas network visualization** — columns: Tier 3 → Tier 2 → Tier 1 → Target → Customers, with connection lines. Clickable nodes open detail overlays.
+- **Inventory Health Overview table** — for all suppliers: RM%, WIP%, FG% of total inventory shown as stacked colored bars, plus latest total inventory value
+- **Supplier cards grouped by tier** — Tier 1 (Critical/Sole-source), Tier 2 (Major Component), Tier 3 (Specialty) with click-to-expand detail overlays
+- **Detail overlays** for each supplier containing:
+  - 10-quarter financial table (Revenue, Gross Profit, Net Income, Gross Margin %)
+  - 10-quarter inventory breakdown table (Raw Materials, WIP, Finished Goods, Total, RM%, WIP%, FG%)
+  - Canvas chart: stacked bar chart of inventory composition with Gross Margin % line overlay
+  - Business description and relationship to target company
+- **Supply Chain Shock Analysis** section — narrative analysis of how a demand/supply shock to the target company ripples through the supply chain, with an impact matrix table (Revenue Impact, Margin Impact, Overall Risk per supplier)
 - Clean newspaper-style design (light mode, professional typefaces)
 - All financial figures hyperlinked to Daloopa source citations
 - A "Download as PDF" button (uses `window.print()`)
+
+**DOM Safety**: All JavaScript MUST use `createElement()` + `textContent` + `appendChild()` for DOM construction. NEVER use `innerHTML`, `outerHTML`, or any HTML-string injection methods. Use helper functions like `ce(tag)`, `ca(el, attrs)`, `cA(parent, children)` to keep code compact.
 
 Write the file to `~/Generated Stuff/[TICKER]-supply-chain.html` (or user-specified location), then open it with `open`.
 
@@ -82,6 +90,25 @@ For each identified supplier (aim for 8-15 key suppliers):
    - Flag when this is an estimate vs. a disclosed figure
 5. **Business & product description**: What does this supplier provide? Be specific (e.g., "5nm/3nm chip fabrication for A-series and M-series SoCs" not just "semiconductors")
 
+### Phase 3b: Inventory & 10-Quarter Financial Data
+
+For the target company AND each identified supplier (8-15 companies), pull **10 quarters** of data:
+
+1. **Discover inventory series** using `discover_company_series` with keywords: ["raw material", "work in process", "finished good", "inventory", "inventories"]
+   - Look for separate RM, WIP, FG series, plus a total inventory series
+   - Some companies report "carrying amount" breakdowns — use those for RM/WIP/FG splits
+2. **Discover financial series** using `discover_company_series` with keywords: ["revenue", "gross profit", "net income", "gross margin"]
+3. **Pull 10 quarters** using `get_company_fundamentals` with periods spanning Q3 of 2.5 years ago through the latest available quarter
+   - Example: if latest is Q4'25, pull ["2023Q3", "2023Q4", "2024Q1", "2024Q2", "2024Q3", "2024Q4", "2025Q1", "2025Q2", "2025Q3", "2025Q4"]
+4. **Compute inventory composition**: For each quarter, calculate RM%, WIP%, FG% of total inventory
+   - High WIP% can signal production bottlenecks
+   - Rising FG% can signal demand weakness
+   - Rising RM% can signal supply hoarding or procurement buildup
+5. **Handle missing data gracefully**: Some suppliers may not report full inventory breakdowns — show what's available and note gaps
+6. **Multi-currency handling**: Note the reporting currency for each company (USD, NTD, KRW, EUR, etc.) and display with appropriate units (e.g., "NTD B" for TSMC, "KRW T" for Samsung)
+
+Run inventory and financial series pulls in parallel across all companies.
+
 ### Phase 4: Customer / Downstream Analysis
 
 Research where the target company is itself a supplier:
@@ -122,6 +149,9 @@ TIER 1 SUPPLIERS (sorted by estimated % of target COGS, descending):
   - Market cap
   - Relationship summary (sole source? multi-source? critical?)
   - Their key suppliers (Tier 2) if researched
+  - 10-quarter financials: Revenue, Gross Profit, Net Income, GM% (with Daloopa citation IDs)
+  - 10-quarter inventory: RM, WIP, FG, Total, RM%, WIP%, FG% (with Daloopa citation IDs)
+  - Reporting currency and unit (e.g., USD $M, NTD B, KRW T)
 
 TIER 1 CUSTOMERS (sorted by estimated % of target revenue, descending):
   For each:
@@ -134,6 +164,29 @@ TIER 1 CUSTOMERS (sorted by estimated % of target revenue, descending):
 TIER 2 SUPPLIERS (for top 3-5 Tier 1 suppliers):
   For each Tier 1 supplier, their key suppliers with basic data
 ```
+
+### Phase 6b: Supply Chain Shock Analysis
+
+Prepare a narrative analysis of how a shock to the target company would ripple through the supply chain:
+
+1. **Classify each supplier by dependency level**:
+   - **High dependency**: Target company is >20% of supplier's revenue → severe impact from demand shock
+   - **Moderate dependency**: Target is 10-20% of revenue → meaningful but manageable impact
+   - **Low dependency**: Target is <10% of revenue → diversified, minimal direct impact
+
+2. **Assess shock propagation for each supplier**:
+   - **Revenue Impact** (High/Medium/Low): Based on % of revenue from target
+   - **Margin Impact** (High/Medium/Low): Based on operating leverage, fixed costs, ability to find replacement demand
+   - **Inventory Risk**: Suppliers with high FG% are more exposed to demand shocks; those with high RM% face supply-side risk
+   - **Substitutability**: Can the target switch to alternatives? Can the supplier find other customers?
+
+3. **Build an impact matrix table** with columns: Supplier, Tier, Revenue Dependency, Revenue Impact, Margin Impact, Overall Risk
+
+4. **Write narrative sections**:
+   - "Most Exposed Suppliers" — 2-3 paragraphs on suppliers facing highest risk
+   - "Resilient Suppliers" — suppliers with diversified revenue bases
+   - "Second-Order Effects" — how Tier 2 suppliers would be indirectly affected
+   - "Key Monitoring Metrics" — what an analyst should watch (inventory days, order backlog, etc.)
 
 ---
 
@@ -687,220 +740,155 @@ Show 6 KPIs for the target company:
   </div>
 ```
 
-### Section 4: Tab Navigation
-```html
-  <div class="tab-bar">
-    <button class="tab active" data-tab="overview" onclick="switchTab('overview')">Supply Chain Map</button>
-    <button class="tab" data-tab="suppliers" onclick="switchTab('suppliers')">Supplier Detail</button>
-    <button class="tab" data-tab="customers" onclick="switchTab('customers')">Customer Detail</button>
-    <button class="tab" data-tab="tier2" onclick="switchTab('tier2')">Tier 2 Suppliers</button>
-    <button class="tab" data-tab="concentration" onclick="switchTab('concentration')">Concentration Analysis</button>
-  </div>
+### Section 4: Page Layout
+
+The dashboard uses a **single scrollable page** (no tabs) with the following vertical order:
+1. KPI bar (target company overview)
+2. Canvas network visualization
+3. Inventory Health Overview table
+4. Supplier cards grouped by tier
+5. Supply Chain Shock Analysis (narrative + impact matrix)
+6. Concentration Analysis summary
+7. Footer
+
+Each supplier card is clickable — opening a **full-screen detail overlay** with 10-quarter financials, inventory tables, and Canvas charts. The overlay is dismissed with × or backdrop click.
+
+### Section 5: Canvas Network Visualization
+
+Replace the HTML card-based chain view with a **Canvas-based tier-grouped network**:
+
+- Use a `<canvas>` element spanning the full container width, ~420px height
+- **Column layout**: Tier 3 (left) → Tier 2 → Tier 1 → Target (center) → Customers (right)
+- Draw each company as a rounded rectangle node with ticker label
+- Draw connection lines (bezier curves or straight lines) between related nodes
+- Color-code by tier: Target = dark (#1a1a1a), Tier 1 = coral (#d46b5c), Tier 2 = steel blue (#5b8db8), Tier 3 = muted sage, Customers = blue-gray
+- **Clickable nodes**: Track click coordinates with a `click` event listener on the canvas, determine which node was clicked via hit-testing, then open the detail overlay for that company
+- Column headers ("TIER 1", "TIER 2", "TARGET", etc.) drawn as text above each column
+- Responsive: redraw on `window.resize`
+
+```javascript
+// Example network drawing function pattern:
+function drawNetwork() {
+  const cv = document.getElementById('networkCanvas');
+  const ctx = cv.getContext('2d');
+  cv.width = cv.parentElement.clientWidth;
+  cv.height = 420;
+  ctx.clearRect(0, 0, cv.width, cv.height);
+
+  // Define columns: x positions for each tier
+  const cols = {
+    tier3: cv.width * 0.08,
+    tier2: cv.width * 0.28,
+    tier1: cv.width * 0.48,
+    target: cv.width * 0.68,
+    customers: cv.width * 0.88
+  };
+
+  // Draw column headers, nodes, and connection lines
+  // Store node positions for hit-testing on click
+}
 ```
 
-### Section 5: Tab Content — Supply Chain Map (Overview)
-This is the visual chain layout showing Tier 2 → Tier 1 → Target → Customers in a horizontal flow.
+### Section 5b: Inventory Health Overview
 
-```html
-<div id="overview" class="tab-content active">
-  <h2>Supply Chain Overview</h2>
-  <p style="color:var(--text-secondary); margin-bottom:16px;">Click any company to expand details. Use "Explore Tier 2" to drill deeper into the supply chain.</p>
+Below the network, add an **Inventory Health Overview** table showing all suppliers:
 
-  <div class="chain-view">
-    <!-- Tier 2 column (optional, show top 3-5) -->
-    <div class="chain-column">
-      <div class="chain-column-header">Tier 2 Suppliers</div>
-      <!-- Compact cards for Tier 2 -->
-    </div>
-
-    <div class="chain-arrow">&rarr;</div>
-
-    <!-- Tier 1 Suppliers column -->
-    <div class="chain-column">
-      <div class="chain-column-header">Tier 1 Suppliers</div>
-      <!-- Company cards for each Tier 1 supplier -->
-      <div class="company-card supplier-card" id="card-[TICKER]" onclick="toggleCard('card-[TICKER]')">
-        <div class="card-header">
-          <div>
-            <div class="card-name">[Company Name]</div>
-            <div class="card-ticker">[TICKER]</div>
-          </div>
-          <span class="card-badge badge-pct-high">~XX% of COGS</span>
-        </div>
-        <div class="card-supplies">Supplies: [specific products/components]</div>
-        <div class="card-metrics">
-          <div><div class="card-metric-label">Revenue</div><div class="card-metric-value"><a href="https://daloopa.com/src/[id]">$XXB</a></div></div>
-          <div><div class="card-metric-label">[Target] Rev %</div><div class="card-metric-value">XX%</div></div>
-          <div><div class="card-metric-label">Gross Margin</div><div class="card-metric-value"><a href="https://daloopa.com/src/[id]">XX%</a></div></div>
-        </div>
-        <!-- Expanded detail panel -->
-        <div class="detail-panel">
-          <div class="detail-section">
-            <h4>Business Description</h4>
-            <p class="card-desc">[2-3 sentence description]</p>
-          </div>
-          <div class="detail-section">
-            <h4>Relationship with [TARGET]</h4>
-            <p class="card-desc">[What they supply, how critical, sole source?, etc.]</p>
-            <div style="margin-top:8px;">
-              <div style="display:flex; justify-content:space-between; font-size:11px;">
-                <span>% of [TARGET] COGS</span><span class="bold">~XX%</span>
-              </div>
-              <div class="relationship-bar"><div class="relationship-fill fill-[color]" style="width:XX%"></div></div>
-              <div style="display:flex; justify-content:space-between; font-size:11px; margin-top:6px;">
-                <span>[TARGET] as % of their revenue</span><span class="bold">~XX%</span>
-              </div>
-              <div class="relationship-bar"><div class="relationship-fill fill-blue" style="width:XX%"></div></div>
-            </div>
-          </div>
-          <div class="detail-section">
-            <h4>Methodology</h4>
-            <p class="source-tag">[Explain how the % estimates were derived, cite sources]</p>
-          </div>
-          <button class="drill-btn" onclick="event.stopPropagation(); drillDown('[TICKER]')">Explore Tier 2 suppliers &rarr;</button>
-        </div>
-      </div>
-      <!-- Repeat for each Tier 1 supplier -->
-    </div>
-
-    <div class="chain-arrow">&rarr;</div>
-
-    <!-- Target Company (center) -->
-    <div class="chain-column">
-      <div class="chain-column-header">Target Company</div>
-      <div class="company-card target-card">
-        <div class="card-name">[TARGET COMPANY]</div>
-        <div class="card-ticker">[TICKER]</div>
-        <div class="card-desc">[1 sentence description]</div>
-        <div class="card-metrics">
-          <div><div class="card-metric-label">TTM Revenue</div><div class="card-metric-value"><a href="https://daloopa.com/src/[id]" style="color:white">$XXB</a></div></div>
-          <div><div class="card-metric-label">TTM COGS</div><div class="card-metric-value"><a href="https://daloopa.com/src/[id]" style="color:white">$XXB</a></div></div>
-          <div><div class="card-metric-label">Gross Margin</div><div class="card-metric-value">XX.X%</div></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="chain-arrow">&rarr;</div>
-
-    <!-- Customers column -->
-    <div class="chain-column">
-      <div class="chain-column-header">Key Customers</div>
-      <!-- Company cards for each major customer -->
-    </div>
-  </div>
-</div>
+```
+| Company | Ticker | Total Inventory | RM% | WIP% | FG% | Composition Bar |
 ```
 
-### Section 6: Tab Content — Supplier Detail Table
-A sortable summary table of all Tier 1 suppliers with full financial data.
+- The "Composition Bar" column renders a stacked horizontal bar (RM = blue, WIP = amber, FG = green) using inline CSS `background: linear-gradient(...)`
+- Sort by total inventory descending or by FG% descending (highest FG% = most demand-shock exposure)
+- Include the target company at the top of the table
+- Each inventory value must link to its Daloopa citation
 
-```html
-<div id="suppliers" class="tab-content">
-  <h2>Tier 1 Supplier Analysis</h2>
-  <table class="conc-table">
-    <thead>
-      <tr>
-        <th>Company</th>
-        <th>Supplies</th>
-        <th>Est. % of COGS</th>
-        <th>[TARGET] as % of Rev</th>
-        <th>TTM Revenue</th>
-        <th>Gross Margin</th>
-        <th>TTM Net Income</th>
-        <th>Concentration Risk</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td><strong>[Company]</strong> <span class="card-ticker">[TICKER]</span></td>
-        <td>[Products]</td>
-        <td>~XX%</td>
-        <td>~XX%</td>
-        <td><a href="https://daloopa.com/src/[id]">$XXB</a></td>
-        <td><a href="https://daloopa.com/src/[id]">XX.X%</a></td>
-        <td><a href="https://daloopa.com/src/[id]">$X.XB</a></td>
-        <td><span class="risk-tag risk-[high|med|low]">[HIGH|MED|LOW]</span></td>
-      </tr>
-      <!-- Repeat for each supplier -->
-      <tr class="row-total">
-        <td><strong>Top Suppliers Total</strong></td>
-        <td></td>
-        <td>~XX%</td>
-        <td></td>
-        <td></td>
-        <td></td>
-        <td></td>
-        <td></td>
-      </tr>
-    </tbody>
-  </table>
+### Section 5c: Supplier Cards by Tier
 
-  <div class="methodology-box">
-    <h4>Estimation Methodology</h4>
-    <p><strong>% of COGS estimates</strong> are derived from [explain: publicly disclosed supplier revenue from target, analyst estimates, industry reports, proportional analysis of supplier revenue vs. target COGS]. Where exact figures are undisclosed, we estimate based on [methodology]. Figures marked with "~" are estimates.</p>
-    <p style="margin-top:6px;"><strong>Concentration risk</strong> is assessed as HIGH (>15% of COGS or sole source), MED (5-15% of COGS or limited alternatives), LOW (<5% of COGS with multiple alternatives).</p>
-  </div>
-</div>
+Below the inventory overview, render supplier cards grouped under tier headings:
+
+```
+── TIER 1 · Critical / Sole-Source ──────
+[Card: TSMC]  [Card: Samsung]  [Card: Broadcom]  ...
+
+── TIER 2 · Major Component ─────────────
+[Card: Qualcomm]  [Card: Skyworks]  [Card: TXN]  ...
+
+── TIER 3 · Specialty ───────────────────
+[Card: Corning]  [Card: Cirrus Logic]  ...
 ```
 
-### Section 7: Tab Content — Customer Detail
-```html
-<div id="customers" class="tab-content">
-  <h2>[TARGET] as Supplier &mdash; Key Customers</h2>
-  <p style="color:var(--text-secondary); margin-bottom:16px;">Companies where [TARGET] is a significant supplier or vendor.</p>
+Each card shows: Company name, ticker, what they supply, TTM revenue, gross margin, estimated % of target COGS, a colored dot for tier. Clicking a card opens the detail overlay.
 
-  <!-- Customer cards with similar structure to supplier cards -->
-  <div class="two-col">
-    <!-- Customer company cards -->
-  </div>
-</div>
+### Section 6: Detail Overlay
+
+When a user clicks a supplier card or network node, show a **full-screen overlay** with comprehensive detail:
+
+**Structure:**
+- Fixed overlay div covering the viewport with semi-transparent backdrop
+- Close button (×) in top-right corner
+- Content area with three sub-sections:
+
+**6a. Financial History Table (10 Quarters)**
 ```
-
-### Section 8: Tab Content — Tier 2 Suppliers
-```html
-<div id="tier2" class="tab-content">
-  <h2>Tier 2 Supply Chain</h2>
-  <p style="color:var(--text-secondary); margin-bottom:16px;">Key suppliers to [TARGET]'s major Tier 1 suppliers. These companies are two steps removed from [TARGET] in the supply chain.</p>
-
-  <!-- For each Tier 1 supplier that has Tier 2 data -->
-  <div id="tier2-[TICKER]" style="margin-bottom:32px;">
-    <h3>[Tier 1 Supplier Name] ([TICKER]) &mdash; Their Key Suppliers</h3>
-    <!-- Compact cards or table for each Tier 2 supplier -->
-  </div>
-</div>
+| Metric        | Q3'23 | Q4'23 | Q1'24 | ... | Q4'25 |
+|---------------|-------|-------|-------|-----|-------|
+| Revenue       | $XXB  | $XXB  | ...   |     |       |
+| Gross Profit  | $XXB  | $XXB  | ...   |     |       |
+| Net Income    | $XXB  | $XXB  | ...   |     |       |
+| Gross Margin  | XX.X% | XX.X% | ...   |     |       |
 ```
+- Every value must be a Daloopa citation link: `<a href="https://daloopa.com/src/{id}">$value</a>`
+- Display currency unit in header (e.g., "USD $M", "NTD B", "KRW T")
 
-### Section 9: Tab Content — Concentration Analysis
-```html
-<div id="concentration" class="tab-content">
-  <h2>Supply Chain Concentration Analysis</h2>
-
-  <div class="two-col">
-    <div>
-      <h3>Supplier Concentration</h3>
-      <p style="font-size:13px; color:var(--text-secondary); margin-bottom:12px;">How dependent is [TARGET] on its top suppliers?</p>
-      <!-- Bar chart or table showing % of COGS by supplier -->
-      <!-- Flag any single supplier >20% as high risk -->
-    </div>
-    <div>
-      <h3>Revenue Dependency</h3>
-      <p style="font-size:13px; color:var(--text-secondary); margin-bottom:12px;">Which suppliers are most dependent on [TARGET]?</p>
-      <!-- Bar chart or table showing [TARGET] as % of each supplier's revenue -->
-      <!-- Flag any supplier where [TARGET] is >25% of revenue -->
-    </div>
-  </div>
-
-  <!-- Risk Summary Box -->
-  <div class="methodology-box" style="margin-top:24px;">
-    <h4>Key Supply Chain Risks</h4>
-    <ul style="padding-left:16px; margin-top:8px;">
-      <li><strong>Single-source dependencies:</strong> [List any sole-source suppliers]</li>
-      <li><strong>Geographic concentration:</strong> [Where are key suppliers located? Taiwan, China, etc.]</li>
-      <li><strong>Revenue dependency:</strong> [Which suppliers would be most impacted if TARGET reduced orders?]</li>
-    </ul>
-  </div>
-</div>
+**6b. Inventory Breakdown Table (10 Quarters)**
 ```
+| Metric           | Q3'23 | Q4'23 | ... |
+|------------------|-------|-------|-----|
+| Raw Materials    | $XXM  | $XXM  | ... |
+| Work in Process  | $XXM  | $XXM  | ... |
+| Finished Goods   | $XXM  | $XXM  | ... |
+| Total Inventory  | $XXM  | $XXM  | ... |
+| RM%              | XX%   | XX%   | ... |
+| WIP%             | XX%   | XX%   | ... |
+| FG%              | XX%   | XX%   | ... |
+```
+- Absolute values are Daloopa citation links; percentages are computed (no link needed)
+
+**6c. Canvas Chart — Inventory Composition vs. Gross Margin**
+- **Stacked bar chart**: Each bar represents a quarter. Segments = RM (blue), WIP (amber), FG (green), stacked to total inventory value
+- **Line overlay**: Gross Margin % plotted as a line with dots on the right Y-axis (0-100%)
+- **Left Y-axis**: Inventory value in reporting currency
+- **X-axis**: Quarter labels (Q3'23, Q4'24, etc.)
+- Draw using Canvas 2D API with `createElement('canvas')`, NOT any charting library
+- Include a legend below the chart
+
+### Section 7: Supply Chain Shock Analysis
+
+A dedicated section (below the supplier cards) analyzing how a shock to the target company would propagate:
+
+**7a. Narrative Analysis** — 3-4 paragraphs covering:
+- "Most Exposed Suppliers" — those with highest revenue dependency on target
+- "Resilient Suppliers" — diversified revenue, low target concentration
+- "Second-Order Effects" — how Tier 2/3 suppliers are indirectly affected
+- "Key Monitoring Metrics" — inventory days, order backlogs, WIP trends to watch
+
+**7b. Impact Matrix Table**
+```
+| Supplier | Tier | Rev. from Target | Revenue Impact | Margin Impact | Inventory Risk | Overall |
+|----------|------|------------------|---------------|---------------|----------------|---------|
+| TSMC     | 1    | ~25%             | HIGH          | MEDIUM        | LOW            | HIGH    |
+| ...      |      |                  |               |               |                |         |
+```
+- Color-code risk cells: HIGH = red background, MEDIUM = amber, LOW = green
+- Sort by Overall Risk descending
+
+### Section 8: Concentration Analysis
+
+Summary of supplier and revenue concentration with risk flags:
+- Supplier concentration: flag any supplier >20% of COGS
+- Revenue dependency: flag any supplier where target is >25% of their revenue
+- Geographic concentration: note country exposure (Taiwan, China, South Korea, etc.)
+- Single-source dependencies: list sole-source suppliers
 
 ### Section 10: Footer
 ```html
@@ -945,10 +933,21 @@ A sortable summary table of all Tier 1 suppliers with full financial data.
 - If a figure cannot be reliably estimated, say "Not disclosed" rather than guessing
 
 ### Interactivity Rules
-- Every company card must be clickable to expand
-- Expanded cards show: full business description, relationship details, financial metrics, methodology notes
-- "Explore Tier 2" button must navigate to the Tier 2 tab and scroll to the relevant section
-- Tab switching must be smooth and not reload the page
+- Every company card and network node must be clickable to open a detail overlay
+- Detail overlays show: 10-quarter financials, 10-quarter inventory breakdown, Canvas inventory chart, business description
+- Close overlay with × button or clicking the backdrop
+- Network visualization must redraw on window resize
+- All interactions must be smooth and not reload the page
+
+### DOM Safety Rules (CRITICAL)
+- ALL JavaScript DOM construction MUST use `createElement()` + `textContent` + `appendChild()`
+- NEVER use `innerHTML`, `outerHTML`, or any HTML-string-based injection methods
+- NEVER use DOM write/writeln methods
+- Define compact helper functions to keep DOM construction code readable:
+  - `ce(tag)` → `document.createElement(tag)`
+  - `ca(el, attrs)` → sets attributes/textContent on an element
+  - `cA(parent, children)` → appends array of children to parent
+- This is required because security hooks will block the file if HTML-string injection is detected
 
 ---
 
@@ -957,19 +956,21 @@ A sortable summary table of all Tier 1 suppliers with full financial data.
 Follow this exact sequence:
 
 1. **discover_companies** → get target company_id
-2. **discover_company_series + get_company_fundamentals** → pull target company financials (revenue, COGS, margins)
+2. **discover_company_series + get_company_fundamentals** → pull target company financials (revenue, COGS, margins) AND inventory series for 10 quarters
 3. **search_documents + WebSearch** → identify suppliers (run in parallel, multiple queries)
-4. **discover_companies** → look up each identified supplier by ticker (batch)
-5. **discover_company_series + get_company_fundamentals** → pull financials for each supplier (batch, parallel)
-6. **search_documents + WebSearch** → determine revenue concentration for each supplier (parallel)
-7. **WebSearch** → identify customers where target is a supplier
-8. **discover_companies + get_company_fundamentals** → pull customer financials
-9. **Repeat lighter version of 3-6** for Tier 2 (top 3-5 Tier 1 suppliers' suppliers)
-10. **Synthesize** → organize all data into the framework
-11. **Write HTML** → generate the complete self-contained HTML file
-12. **Save & Open** → write to `~/Generated Stuff/[TICKER]-supply-chain.html` and open in browser
+4. **discover_companies** → look up each identified supplier by ticker (batch all at once)
+5. **discover_company_series** → for each supplier, pull BOTH financial series (revenue, GP, NI, GM) AND inventory series (RM, WIP, FG, total) — batch these in parallel
+6. **get_company_fundamentals** → pull 10 quarters of data for all suppliers (batch in parallel, group series_ids per company)
+7. **search_documents + WebSearch** → determine revenue concentration for each supplier (parallel)
+8. **WebSearch** → identify customers where target is a supplier
+9. **discover_companies + get_company_fundamentals** → pull customer financials
+10. **Repeat lighter version of 3-6** for Tier 2 (top 3-5 Tier 1 suppliers' suppliers)
+11. **Shock Analysis** → classify suppliers by dependency, assess propagation, build impact matrix
+12. **Synthesize** → organize all data (financials, inventory breakdowns, shock analysis) into the framework
+13. **Write HTML** → generate the complete self-contained HTML file using DOM-safe JavaScript (no HTML-string injection)
+14. **Save & Open** → write to `~/Generated Stuff/[TICKER]-supply-chain.html` and open in browser
 
-For steps 2-9, maximize parallelism — run independent searches and API calls concurrently.
+For steps 2-10, maximize parallelism — run independent searches and API calls concurrently. The 10-quarter pull is the most data-intensive step; batch aggressively.
 
 After writing the file, always end with:
 > Data sourced from Daloopa

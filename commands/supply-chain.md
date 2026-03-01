@@ -18,12 +18,16 @@ Follow the supply-chain skill workflow to produce a comprehensive interactive su
    - Estimated % of target company's total COGS attributable to that supplier (with logic/citation)
    - What % of the supplier's revenue comes from the target company
 4. **Map customer relationships**: Identify companies where the target is a major supplier.
-5. **Pull financials**: For each company in the supply chain, pull key financial data from Daloopa MCP (revenue, margins, net income).
-6. **Build interactive dashboard**: Generate a self-contained HTML file with:
-   - Interactive supply chain network visualization
-   - Click-to-expand company cards with financials, business description, products supplied
-   - Navigation from 1st-order to 2nd-order suppliers
+5. **Pull financials & inventory**: For each company in the supply chain, pull 10 quarters of financial data (revenue, GP, NI, GM%) AND inventory breakdown (RM, WIP, FG, total) from Daloopa MCP.
+6. **Inventory analysis**: Compute RM%, WIP%, FG% for each supplier. Build an inventory health overview table with stacked composition bars.
+7. **Build interactive dashboard**: Generate a self-contained HTML file with:
+   - Canvas-based tier-grouped network visualization (Tier 3 → Tier 2 → Tier 1 → Target → Customers)
+   - Inventory Health Overview table with RM/WIP/FG composition bars
+   - Supplier cards grouped by tier level, clickable to open detail overlays
+   - Detail overlays with 10-quarter financials, inventory tables, and Canvas inventory-vs-GM% charts
+   - Supply Chain Shock Analysis with narrative + impact matrix
    - Clean, newspaper-style design (light mode, serif/sans-serif professional typefaces)
-7. **Deliver**: Write the HTML file to `~/Generated Stuff/[TICKER]-supply-chain.html` and open it in the browser.
+   - DOM-safe JavaScript (createElement + textContent, no HTML-string injection)
+8. **Deliver**: Write the HTML file to `~/Generated Stuff/[TICKER]-supply-chain.html` and open it in the browser.
 
 Every financial figure must include a Daloopa citation hyperlink. The dashboard should be information-dense and analytically rigorous.
